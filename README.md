@@ -4,13 +4,13 @@
 
 # 让我们开始吧！
 
-在运行**osc viewer.py**之前，您需要先安装\*\*[Python](https://www.python.org/)**，因为这是依赖**[Python](https://www.python.org/)\*\*运行的项目
+在运行**osc viewer.py**之前，您需要先安装[Python](https://www.python.org/)**，因为这是依赖**[Python](https://www.python.org/)运行的项目
 
 1. 打开终端，例如**CMD**
 2. 在终端输入：
 
    ```
-    pip install pythonosc
+    pip install python-osc
    
    ```
 
