@@ -10,9 +10,15 @@ def home():
     if request.method == 'POST':     #如果接收到POST消息
         if 'message' in request.form:     #如果收到message的数据
             message = request.form['message']     #为message赋值获取的表单信息的message的数据
+            typing = int(request.form['typing'])     #为typing赋值获取的表单信息的强制转换为整型的typing的数据
             client.send_message("/chatbox/input", [message, True, True])        #对OSC服务器发送消息
+            client.send_message("/chatbox/typing", typing)        #对OSC服务器发送消息
             #消息格式可参考"https://docs.vrchat.com/docs/osc-as-input-controller"(官方帮助文档，推荐)
             #或"https://a2942.top:5904/a2942/OSC/"(自己根据上面的内容写的，可能有翻译错误的位置)
+
+        if 'typing' in request.form:     #如果收到message的数据
+            typing = int(request.form['typing'])     #为typing赋值获取的表单信息的强制转换为整型的typing的数据
+            client.send_message("/chatbox/typing", typing)        #对OSC服务器发送消息
                 
     return render_template('index.html')
 oscip = "127.0.0.1" #OSC服务器的IP地址
