@@ -1,208 +1,596 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-    <title>VRChat OSC Chat</title>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VRChat OSC</title>
     <style>
-        * {
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            background-color: #f0f0f0;
-        }
-        
-        .chat-container {
-            max-width: 600px;
-            margin: 0 auto;
-            background-color: #fff;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .chat-header {
-            background-color: #333;
-            color: #fff;
-            padding: 10px;
-            text-align: center;
-            font-size: 18px;
-            flex: 0 0 auto;
-        }
-        
-        .chat-body {
-            padding: 10px;
-            height: 400px;
-            flex: 1 1 auto;
-            overflow-y: auto;
-        }
-        
-        .message {
-            margin-bottom: 10px;
-        }
-        
-        .user-message {
-            text-align: right;
-        }
-        
-        .bot-message {
-            text-align: left;
-        }
-        
-        .message-text {
-            display: inline-block;
-            padding: 5px 10px;
-            border-radius: 5px;
-            word-break: break-all;
-            white-space: normal; 
-            min-height: 28px;
-        }
-        
-        .user-message .message-text {
-            background-color: #c3e6cb;
-        }
-        
-        .bot-message .message-text {
-            background-color: #f8f9fa;
-        }
-        
-        .chat-footer {
-            background-color: #f0f0f0;
-            padding: 10px;
-            position: fixed; /*or前面的是absolute就可以用*/
-            bottom: 0px;
-            max-width: 600px;
-            width: 100%;
-            flex: 0 0 auto;
-        }
-        
-        .input-container {
-            display: flex;
-        }
-        
-        .input-container input {
-            flex-grow: 1;
-            padding: 5px;
-            border-radius: 5px 0 0 5px;
-            border: none;
-        }
-        
-        .input-container button {
-            padding: 5px 10px;
-            border-radius: 0 5px 5px 0;
-            background-color: #333;
-            color: #fff;
-            cursor: pointer;
+        :root {
+            --primary: {{ config.primary_color | default('#4a90e2') }}; /* 兜底默认主题色 */
+            --primary-text: #ffffff; /* 主题色对应的文字色（动态更新） */
+            --primary-text-rgb: 255,255,255; /* 主题反色RGB（动态更新） */
+            --success: #00b894;
+            --danger: #ff7675;
+            
+            /* 简化：直接保留浅色模式默认值（无需深浅色切换） */
+            --bg-app: #f0f2f5; 
+            --bg-card: #ffffff; 
+            --bg-input: #f1f3f6; 
+            --text-main: #333333; 
+            --text-dim: #999; 
+            --border: #eee;
         }
 
-        #charCount {
-            padding: 5px 5px;
-            border: 2px solid #333333; /* 设置边框样式 */
-            background-color: #f0f0f0;
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-app); color: var(--text-main); height: 100vh; display: flex; justify-content: center; align-items: center; overflow: hidden; transition: 0.3s; }
+        
+        .app-container { width: 100%; height: 100vh; background: var(--bg-card); display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        @media (min-width: 768px) { .app-container { width: 90%; max-width: 1000px; height: 90vh; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); } }
+
+        /* Header 美化：文字色绑定--primary-text */
+        .app-header { 
+            background: var(--primary); 
+            color: var(--primary-text) !important; /* 核心修改：用主题反色 */
+            padding: 15px 25px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            z-index: 10; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+            border: none;
         }
+
+        /* 聊天区域 */
+        .chat-body { flex: 1; overflow-y: auto; padding: 25px; background-color: {{ config.chat_bg_color | default('#2d2d2d') }};
+            {% if config.chat_bg_image %}
+            background-image: url("/data/{{ config.chat_bg_image }}");
+            background-size: {{ config.chat_bg_size | default('cover') }};
+            background-position: center; background-repeat: no-repeat;
+            {% endif %}
+        }
+        .msg-group { display: flex; margin-bottom: 20px; animation: slideUp 0.3s; }
+        .msg-group.user { flex-direction: row-reverse; }
+        .avatar { width: 42px; height: 42px; border-radius: 12px; margin: 0 12px; background-size: cover; background-position: center; flex-shrink: 0; background-color: #ddd; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
+        .bubble { max-width: 65%; padding: 12px 16px; border-radius: 18px; font-size: 14.5px; line-height: 1.6; }
+        .user .bubble { background: {{ config.user_bubble_color | default('#4a90e2') }}; color: white; border-bottom-right-radius: 4px; }
+        .sys .bubble { background: {{ config.system_bubble_color | default('#f1f3f6') }}; color: #333; border-bottom-left-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+
+        /* 输入框美化（核心修改：所有边框/占位符绑定--primary-text） */
+        .app-footer { 
+            padding: 20px; 
+            background: var(--primary); 
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+            color: var(--primary-text) !important;
+        }
+        .input-box { 
+            display: flex; 
+            background: rgba(255,255,255,0.2); 
+            border-radius: 30px; 
+            padding: 5px 8px 5px 20px; 
+            align-items: center; 
+            /* 核心修改：默认边框用--primary-text（带透明度） */
+            border: 1px solid rgba(var(--primary-text-rgb), 0.3) !important; 
+            transition: 0.3s; 
+        }
+        .input-box:focus-within { 
+            background: rgba(255,255,255,0.3); 
+            box-shadow: 0 0 15px rgba(0,0,0,0.1); 
+            /* 核心修改：聚焦边框用--primary-text（更高透明度） */
+            border: 1px solid rgba(var(--primary-text-rgb), 0.5) !important; 
+        }
+        .input-box input { 
+            flex: 1; 
+            border: none; 
+            background: transparent; 
+            padding: 12px 0; 
+            outline: none; 
+            color: var(--primary-text) !important; 
+            font-size: 15px; 
+        }
+        /* 核心修改：占位符颜色绑定--primary-text（带透明度） */
+        .input-box input::placeholder {
+            color: rgba(var(--primary-text-rgb), 0.7) !important;
+        }
+        .send-btn { 
+            background: rgba(255,255,255,0.3); 
+            color: var(--primary-text) !important; 
+            border: none; 
+            width: 42px; 
+            height: 42px; 
+            border-radius: 50%; 
+            cursor: pointer; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            transition: 0.2s; 
+        }
+        .send-btn:hover {
+            background: rgba(255,255,255,0.5);
+        }
+        .send-btn:disabled { 
+            opacity: 0.5; 
+            cursor: not-allowed; 
+            filter: grayscale(1); 
+        }
+        #charCount {
+            color: var(--primary-text) !important;
+            opacity: 0.8;
+            font-size:12px;
+            margin-right:12px;
+        }
+
+        /* ========== 核心修改：SettingsPanel 全量适配 --primary/--primary-text ========== */
+        .settings-panel { 
+            position: absolute; 
+            right: 0; 
+            top: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: var(--primary) !important; /* 背景用主题色 */
+            color: var(--primary-text) !important; /* 文字用主题反色 */
+            transform: translateX(100%); 
+            transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1); 
+            z-index: 100; 
+            display: flex; 
+            flex-direction: column; 
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        @media (min-width: 768px) { .settings-panel { width: 400px; } }
+        .settings-panel.open { 
+            transform: translateX(0); 
+            box-shadow: -10px 0 30px rgba(0,0,0,0.1); 
+        }
+        /* SettingsPanel 内部Header */
+        .settings-panel .app-header { 
+            background: rgba(var(--primary-text-rgb), 0.1) !important; /* 半透反色背景 */
+            color: var(--primary-text) !important; 
+            border-bottom: 1px solid rgba(var(--primary-text-rgb), 0.2) !important; /* 底部边框用反色（透明） */
+            box-shadow: none;
+        }
+        /* SettingsPanel 内容区域 */
+        .settings-body { 
+            flex: 1; 
+            overflow-y: auto; 
+            padding: 25px; 
+            background: transparent; /* 继承主题色背景 */
+            color: var(--primary-text) !important;
+        }
+        /* SettingsPanel 标题 */
+        .section-title { 
+            font-size: 11px; 
+            font-weight: bold; 
+            color: var(--primary-text) !important; /* 标题文字用反色 */
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            margin-bottom: 15px; 
+            display: block; 
+            border-bottom: 1px solid rgba(var(--primary-text-rgb), 0.2) !important; /* 下划线用反色（透明） */
+            padding-bottom: 5px; 
+        }
+        /* SettingsPanel 输入框/下拉框 */
+        .settings-panel .form-control { 
+            width: 100%; 
+            padding: 10px 15px; 
+            border-radius: 10px; 
+            border: 1px solid rgba(var(--primary-text-rgb), 0.2) !important; /* 边框用反色（透明） */
+            background: rgba(var(--primary-text-rgb), 0.1) !important; /* 背景用反色（透明） */
+            color: var(--primary-text) !important; /* 文字用反色 */
+            outline: none; 
+            transition: 0.2s; 
+        }
+        .settings-panel .form-control:focus { 
+            border-color: var(--primary-text) !important; /* 聚焦边框用反色 */
+            background: rgba(var(--primary-text-rgb), 0.15) !important;
+        }
+        /* SettingsPanel 下拉框箭头 */
+        .settings-panel select.form-control { 
+            appearance: none; 
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='var(--primary-text)' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E"); 
+            background-repeat: no-repeat; 
+            background-position: right 15px center; 
+        }
+        /* SettingsPanel 颜色选择器容器 */
+        .settings-panel .color-picker-wrapper { 
+            display: flex; 
+            align-items: center; 
+            gap: 10px; 
+            background: rgba(var(--primary-text-rgb), 0.1) !important; /* 背景用反色（透明） */
+            padding: 5px 12px; 
+            border-radius: 10px; 
+            border: 1px solid rgba(var(--primary-text-rgb), 0.2) !important; /* 边框用反色（透明） */
+            margin-bottom: 10px; 
+            transition: all 0.2s ease;
+            color: var(--primary-text) !important;
+        }
+        .settings-panel .color-picker-wrapper small {
+            color: rgba(var(--primary-text-rgb), 0.8) !important; /* 辅助文字用反色（透明） */
+        }
+        /* SettingsPanel 图片预览 */
+        .settings-panel .img-preview { 
+            width: 100%; 
+            height: 110px; 
+            border: 2px dashed rgba(var(--primary-text-rgb), 0.2) !important; /* 虚线边框用反色（透明） */
+            border-radius: 12px; 
+            margin: 10px 0; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            position: relative; 
+            overflow: hidden; 
+            cursor: pointer; 
+            background: rgba(var(--primary-text-rgb), 0.05) !important; /* 背景用反色（透明） */
+            color: var(--primary-text) !important;
+        }
+        .settings-panel .img-preview.to-be-removed img { 
+            opacity: 0.2; 
+            filter: grayscale(1); 
+        }
+        /* SettingsPanel 关闭/删除按钮 */
+        .settings-panel .btn-remove { 
+            position: absolute; 
+            top: -5px; 
+            right: -5px; 
+            background: var(--danger); 
+            color: white; 
+            width: 24px; 
+            height: 24px; 
+            border-radius: 50%; 
+            border: 2px solid var(--primary-text) !important; /* 按钮边框用反色 */
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 14px; 
+            cursor: pointer; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2); 
+            z-index: 5; 
+        }
+        .settings-panel .app-header [onclick="toggleSettings()"] {
+            color: var(--primary-text) !important; /* 关闭按钮文字用反色 */
+            cursor: pointer;
+        }
+        /* SettingsPanel 保存按钮（强化适配） */
+        .settings-panel .btn-save { 
+            background: rgba(var(--primary-text-rgb), 0.15) !important; /* 按钮背景用反色（透明） */
+            color: var(--primary-text) !important; 
+            border: 1px solid var(--primary-text) !important; /* 按钮边框用反色 */
+            width: 100%; 
+            padding: 15px; 
+            border-radius: 12px; 
+            font-weight: bold; 
+            cursor: pointer; 
+            margin-top: 20px; 
+            transition: 0.2s; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1); 
+        }
+        .settings-panel .btn-save:hover { 
+            transform: translateY(-2px); 
+            opacity: 0.9; 
+            background: rgba(var(--primary-text-rgb), 0.2) !important;
+            border-color: rgba(var(--primary-text-rgb), 0.8) !important;
+        }
+
+        /* ========== 核心修改：Toast 穿透点击事件 ========== */
+        #toast { 
+            position: fixed; 
+            bottom: 30px; 
+            left: 50%; 
+            transform: translateX(-50%) translateY(100px); 
+            background: #333; 
+            color: white; 
+            padding: 12px 25px; 
+            border-radius: 30px; 
+            font-size: 14px; 
+            z-index: 1000; 
+            transition: 0.4s; 
+            opacity: 0; 
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3); 
+            pointer-events: none !important; /* 关键：禁用点击事件，实现穿透 */
+        }
+        #toast.show { 
+            transform: translateX(-50%) translateY(0); 
+            opacity: 1; 
+        }
+
+        @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; } }
     </style>
 </head>
 <body>
-    <div class="chat-container">
-        <div class="chat-header">
-            VRChat OSC Chat
-        </div><div class="chat-body" id="chatBody">
-    <!-- 聊天消息将会动态添加到这里 -->
-</div>
-<div class="chat-footer">
-    <div class="input-container">
-        <input type="text" id="messageInput" maxlength="144" onchange="updateCharCount()" onkeydown="updateCharCount()" onkeyup="updateCharCount()" placeholder="输入消息...">
-        <div id="charCount">0 / 144</div>
-        <button id="sendButton">发送</button>
+
+<div id="toast">提示</div>
+
+<div class="app-container">
+    <div class="app-header">
+        <h1 style="font-size: 18px; font-weight: 600;">VRChat OSC</h1>
+        <div style="cursor:pointer; padding: 5px;" onclick="toggleSettings()">⚙️</div>
+    </div>
+
+    <div class="chat-body" id="chatBody">
+        <div class="msg-group sys">
+            <div class="avatar" style="background-color:{{config.system_avatar_color | default('#00b894')}}; {% if config.system_avatar %}background-image:url('/data/{{config.system_avatar}}'){% endif %}">{% if not config.system_avatar %}S{% endif %}</div>
+            <div class="bubble">系统：欢迎使用VRChat OSC。</div>
+        </div>
+    </div>
+
+    <div class="app-footer">
+        <div class="input-box">
+            <input type="text" id="msgInput" placeholder="输入要发送到 VRChat 的消息..." maxlength="144">
+            <div id="charCount">0 / 144</div>
+            <button class="send-btn" id="sendBtn" onclick="sendMsg()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="settings-panel" id="settingsPanel">
+        <div class="app-header">
+            <h2 style="font-size: 16px;">全局配置</h2>
+            <div onclick="toggleSettings()" style="cursor:pointer; font-size: 20px;">×</div>
+        </div>
+        <form id="configForm" class="settings-body">
+            <input type="hidden" name="save_config" value="1">
+            
+            <span class="section-title">连接与主题</span>
+            <!-- 移除了 theme_mode 下拉框，直接保留主题色选择器 + OSC 配置 -->
+            <div style="display:flex; gap:10px; margin-bottom:15px">
+                <input type="text" name="osc_ip" placeholder="OSC IP" value="{{config.OSC_IP | default('127.0.0.1')}}" class="form-control" style="flex:1">
+                <input type="number" name="osc_port" placeholder="Port" value="{{config.OSC_PORT | default('9000')}}" class="form-control" style="width:90px">
+            </div>
+            <!-- 主题色选择器单独展示（可选：调整样式使其更美观） -->
+            <div class="color-picker-wrapper" style="margin-bottom:15px">
+                <input type="color" name="primary_color" value="{{ config.primary_color | default('#4a90e2') }}">
+                <small>主题色</small>
+            </div>
+
+            <span class="section-title">个性化头像</span>
+            <div class="color-picker-wrapper">
+                <input type="color" name="user_avatar_color" value="{{config.user_avatar_color | default('#4a90e2')}}">
+                <small>用户头像背景</small>
+            </div>
+            <input type="file" id="file_user" name="user_avatar" hidden onchange="previewImg(this, 'preview_user', 'user_avatar')">
+            <input type="hidden" name="remove_user_avatar" id="remove_user_avatar" value="0">
+            <div class="img-preview" id="preview_user" onclick="document.getElementById('file_user').click()">
+                {% if config.user_avatar %}<img src="/data/{{config.user_avatar}}">{% else %}<small>点击上传用户头像</small>{% endif %}
+                {% if config.user_avatar %}<div class="btn-remove" onclick="clearImg(event, 'user_avatar')">×</div>{% endif %}
+            </div>
+
+            <span class="section-title">气泡与背景图</span>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:15px">
+                <div class="color-picker-wrapper">
+                    <input type="color" name="user_bubble_color" value="{{config.user_bubble_color | default('#4a90e2')}}">
+                    <small>消息气泡</small>
+                </div>
+                <!-- 背景底色选择器：核心标记类 -->
+                <div class="color-picker-wrapper chat-bg-color-wrapper {% if config.chat_bg_image %}has-bg-image{% endif %}">
+                    <input type="color" name="chat_bg_color" value="{{config.chat_bg_color | default('#2d2d2d')}}">
+                    <small>背景底色</small>
+                </div>
+            </div>
+
+            <select name="chat_bg_size" class="form-control" style="margin-bottom:10px">
+                <option value="cover" {% if config.chat_bg_size == 'cover' %}selected{% endif %}>填充模式 (Cover)</option>
+                <option value="contain" {% if config.chat_bg_size == 'contain' %}selected{% endif %}>适配模式 (Contain)</option>
+                <option value="repeat" {% if config.chat_bg_size == 'repeat' %}selected{% endif %}>重复平铺 (Repeat)</option>
+            </select>
+
+            <input type="file" id="file_bg" name="chat_bg_image" hidden onchange="previewImg(this, 'preview_bg', 'chat_bg_image')">
+            <input type="hidden" name="remove_chat_bg_image" id="remove_chat_bg_image" value="0">
+            <div class="img-preview" id="preview_bg" onclick="document.getElementById('file_bg').click()">
+                {% if config.chat_bg_image %}<img src="/data/{{config.chat_bg_image}}">{% else %}<small>点击上传背景图片</small>{% endif %}
+                {% if config.chat_bg_image %}<div class="btn-remove" onclick="clearImg(event, 'chat_bg_image')">×</div>{% endif %}
+            </div>
+
+            <button type="button" class="btn-save" onclick="saveSettings()">应用并保存所有设置</button>
+            <div style="height: 30px;"></div>
+        </form>
     </div>
 </div>
-</div>
+
 <script>
-    const chatBody = document.getElementById('chatBody');
-    const messageInput = document.getElementById('messageInput');
-    const sendButton = document.getElementById('sendButton');
+    // 调试：确认主题色变量是否正确渲染
+    console.log('当前主题色变量:', getComputedStyle(document.documentElement).getPropertyValue('--primary'));
+    console.log('是否有背景图:', {% if config.chat_bg_image %}true{% else %}false{% endif %});
 
-    sendButton.addEventListener('click', sendMessage);
-    
-    messageInput.addEventListener('keydown', handleKeyPress);
-    function handleKeyPress(event) {
-        if (event.keyCode === 13) { // 检测到回车键按下
-            sendMessage(); // 调用发送消息的逻辑函数
-        }
+    // ========== 新增：颜色亮度计算 + 反色更新函数（新增RGB转换） ==========
+    function getColorLuminance(hexColor) {
+        const r = parseInt(hexColor.slice(1, 3), 16);
+        const g = parseInt(hexColor.slice(3, 5), 16);
+        const b = parseInt(hexColor.slice(5, 7), 16);
+        return (0.299 * r + 0.587 * g + 0.114 * b);
     }
-    
-    function sendMessage() {
-        const message = messageInput.value;
-            addMessage(message, 'user');
-            // 这里可以添加发送消息的逻辑
-            // 清空输入框
-            messageInput.value = '';
-            
-            // 发送消息给/
-            const params = new URLSearchParams();
-            params.append('message', message);
-            params.append('typing', "0");
-            fetch('/', {
-                method: 'POST',
-                body: params
-            })
-        var charCountElement = document.getElementById("charCount");
-        charCountElement.textContent = "0 / 144";
-            setTimeout(function(){
-                        sendButton.disabled = true; // 禁用发送按钮
-                        messageInput.disabled = true; // 禁用文本框
-                    }, 10); //延迟0.1秒
-    
-                    // 在这里添加发送消息的逻辑
-                    setTimeout(function() {
 
-                        messageInput.value = ""; //清空文本框内容
-                    
-                        sendButton.disabled = false; // 启用发送按钮
-                        messageInput.disabled = false; // 启用文本框
-                    }, 1000); // 1.0秒延迟后启用按钮和文本框
-        };
-        
-        let canSendRequest = true; // 声明一个标志变量，初始状态可以发送请求
-        function updateCharCount() {
-           var messageInput = document.getElementById("messageInput");           
-           var charCountElement = document.getElementById("charCount");
-           var remainingChars = 144 - messageInput.value.length;
-           
-           charCountElement.textContent = messageInput.value.length + " / 144";
+    function updatePrimaryTextColor() {
+        const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
+        const luminance = getColorLuminance(primaryColor);
+        const primaryText = luminance > 128 ? '#333333' : '#ffffff';
+        // 新增：设置--primary-text-rgb变量（用于透明度适配）
+        const rgb = [
+            parseInt(primaryText.slice(1, 3), 16),
+            parseInt(primaryText.slice(3, 5), 16),
+            parseInt(primaryText.slice(5, 7), 16)
+        ].join(',');
+        document.documentElement.style.setProperty('--primary-text', primaryText);
+        document.documentElement.style.setProperty('--primary-text-rgb', rgb); // 关键：新增RGB变量
+        // 同步更新文字色
+        document.getElementById('msgInput').style.color = primaryText;
+        document.getElementById('charCount').style.color = luminance > 128 ? '#666666' : '#eeeeee';
+    }
 
-           if (canSendRequest) {
-                // 发送请求
-                const params = new URLSearchParams();
-                params.append('typing', "1");
-                fetch('/', {
-                    method: 'POST',
-                    body: params
-                });
-                canSendRequest = false; // 设置标志变量为 false，表示正在等待 1 秒的间隔
-                setTimeout(() => {
-                    canSendRequest = true; // 1 秒后将标志变量置为 true，表示可以再次发送请求
-                }, 1000); // 设置延迟为 1 秒（1000 毫秒）
+    const chatBody = document.getElementById('chatBody');
+    const msgInput = document.getElementById('msgInput');
+    const sendBtn = document.getElementById('sendBtn');
+    let canSendTyping = true;
+
+    // ========== 图片主题色提取核心函数 ==========
+    function extractImageMainColor(imgElement) {
+        return new Promise((resolve) => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const scale = 0.1;
+            canvas.width = imgElement.width * scale;
+            canvas.height = imgElement.height * scale;
+            ctx.drawImage(imgElement, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const pixels = imageData.data;
+            const colorCount = {};
+            let totalValidPixels = 0;
+
+            for (let i = 0; i < pixels.length; i += 4) {
+                const r = pixels[i];
+                const g = pixels[i + 1];
+                const b = pixels[i + 2];
+                const a = pixels[i + 3];
+
+                if (a < 128 || r + g + b < 10 || r + g + b > 750) continue;
+
+                const simplifyStep = 16;
+                const rSimplified = Math.floor(r / simplifyStep) * simplifyStep;
+                const gSimplified = Math.floor(g / simplifyStep) * simplifyStep;
+                const bSimplified = Math.floor(b / simplifyStep) * simplifyStep;
+
+                const colorKey = `${rSimplified},${gSimplified},${bSimplified}`;
+                colorCount[colorKey] = (colorCount[colorKey] || 0) + 1;
+                totalValidPixels++;
             }
-        }
 
-    
-    function addMessage(message, sender) {
-        const messageDiv = document.createElement('div');
-        messageDiv.classList.add('message');
-        messageDiv.classList.add(sender + '-message');
-        const messageText = document.createElement('span');
-        messageText.classList.add('message-text');
-        messageText.innerHTML = message; // 使用innerHTML插入可能包含HTML代码的内容
-        messageDiv.appendChild(messageText);
-        chatBody.appendChild(messageDiv);
-        // 滚动到底部
+            let mainColor = [68, 144, 226];
+            if (totalValidPixels > 0) {
+                let maxCount = 0;
+                for (const [colorKey, count] of Object.entries(colorCount)) {
+                    if (count > maxCount) {
+                        maxCount = count;
+                        mainColor = colorKey.split(',').map(Number);
+                    }
+                }
+            }
+
+            const hexColor = `#${mainColor.map(c => c.toString(16).padStart(2, '0')).join('')}`;
+            resolve(hexColor);
+        });
+    }
+
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+
+    // 输入字数与正在输入同步
+    msgInput.oninput = () => {
+        const len = msgInput.value.length;
+        document.getElementById('charCount').textContent = `${len} / 144`;
+        if (canSendTyping && len > 0) {
+            fetch('/', { method: 'POST', body: new URLSearchParams({'typing': '1'}) });
+            canSendTyping = false;
+            setTimeout(() => canSendTyping = true, 1000);
+        }
+    };
+
+    // 发送消息并冷却 1 秒
+    function sendMsg() {
+        const val = msgInput.value.trim();
+        if (!val) return;
+        
+        const group = document.createElement('div');
+        group.className = 'msg-group user';
+        group.innerHTML = `<div class="avatar" style="background-color:{{config.user_avatar_color | default('#4a90e2')}}; {% if config.user_avatar %}background-image:url('/data/{{config.user_avatar}}'){% endif %}">{% if not config.user_avatar %}U{% endif %}</div><div class="bubble">${val}</div>`;
+        chatBody.appendChild(group);
+        
+        fetch('/', { method: 'POST', body: new URLSearchParams({'message': val, 'typing': '0'}) });
+        
+        msgInput.value = '';
+        msgInput.disabled = true; sendBtn.disabled = true;
+        setTimeout(() => { msgInput.disabled = false; sendBtn.disabled = false; msgInput.focus(); }, 1000);
         chatBody.scrollTop = chatBody.scrollHeight;
     }
+
+    // ========== 图片预览逻辑（提取主题色+反色） ==========
+    function previewImg(input, previewId, key) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const p = document.getElementById(previewId);
+                p.innerHTML = `<img src="${e.target.result}" id="preview_img_${key}"><div class="btn-remove" onclick="clearImg(event, '${key}')">×</div>`;
+                p.classList.remove('to-be-removed');
+                document.getElementById(`remove_${key}`).value = '0';
+                
+                // 如果是背景图，提取主题色并设置
+                if (key === 'chat_bg_image') {
+                    const bgColorWrapper = document.querySelector('.chat-bg-color-wrapper');
+                    bgColorWrapper.classList.add('has-bg-image');
+                    
+                    const img = document.getElementById(`preview_img_${key}`);
+                    img.onload = async () => {
+                        const mainColor = await extractImageMainColor(img);
+                        const primaryColorInput = document.querySelector('input[name="primary_color"]');
+                        primaryColorInput.value = mainColor;
+                        document.documentElement.style.setProperty('--primary', mainColor);
+                        updatePrimaryTextColor(); // 更新反色（含RGB）
+                        showToast(`已提取图片主题色：${mainColor}`);
+                    };
+                }
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    // 图片标记删除逻辑
+    function clearImg(e, key) {
+        e.stopPropagation();
+        const input = document.getElementById(`remove_${key}`);
+        const preview = (key === 'user_avatar') ? document.getElementById('preview_user') : document.getElementById('preview_bg');
+        
+        if (input.value === '0') {
+            input.value = '1'; 
+            preview.classList.add('to-be-removed'); 
+            showToast("已标记删除，保存后生效");
+            
+            if (key === 'chat_bg_image') {
+                const bgColorWrapper = document.querySelector('.chat-bg-color-wrapper');
+                bgColorWrapper.classList.remove('has-bg-image');
+            }
+        } else {
+            input.value = '0'; 
+            preview.classList.remove('to-be-removed'); 
+            showToast("已恢复图片");
+            
+            if (key === 'chat_bg_image') {
+                const bgColorWrapper = document.querySelector('.chat-bg-color-wrapper');
+                bgColorWrapper.classList.add('has-bg-image');
+            }
+        }
+    }
+
+    // 保存设置 + 实时更新主题色
+    function saveSettings() {
+        const fd = new FormData(document.getElementById('configForm'));
+        fetch('/', { method: 'POST', body: fd }).then(res => {
+            if(res.ok) {
+                showToast("保存成功，正在同步...");
+                const newPrimaryColor = document.querySelector('input[name="primary_color"]').value;
+                document.documentElement.style.setProperty('--primary', newPrimaryColor);
+                updatePrimaryTextColor(); // 更新反色（含RGB）
+                setTimeout(() => location.reload(), 1000);
+            }
+        });
+    }
+
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        t.innerText = msg;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    // 回车发送
+    msgInput.onkeydown = e => { if(e.key === 'Enter' && !msgInput.disabled) sendMsg(); };
+
+    // 初始化
+    window.onload = function() {
+        const bgColorWrapper = document.querySelector('.chat-bg-color-wrapper');
+        const hasBgImage = {% if config.chat_bg_image %}true{% else %}false{% endif %};
+        if (hasBgImage) {
+            bgColorWrapper.classList.add('has-bg-image');
+        } else {
+            bgColorWrapper.classList.remove('has-bg-image');
+        }
+        updatePrimaryTextColor(); // 初始化反色（含RGB）
+    };
 </script>
 </body>
 </html>
